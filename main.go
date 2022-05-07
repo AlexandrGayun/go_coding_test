@@ -1,24 +1,35 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"github.com/AlexandrGayun/go_test_task/config"
 	pgconfig "github.com/AlexandrGayun/go_test_task/config/db"
 	"github.com/AlexandrGayun/go_test_task/managers/block_manager"
 	"github.com/AlexandrGayun/go_test_task/store"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"log"
 	"net/http"
 	"strconv"
 )
 
-var ErrIncorrectBlockNumber = errors.New("incorrect block number")
+const (
+	ErrIncorrectBlockNumber = ValidationError("incorrect block number")
+)
+
+type ValidationError string
+
+func (e ValidationError) Error() string {
+	return string(e)
+}
 
 type managers struct {
 	blockManager *block_manager.Repo
 }
 
-func injectManagerMiddleware(mngrs managers) gin.HandlerFunc {
+func injectManagerMiddleware(mngrs *managers) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		ctx.Set("blockManager", mngrs.blockManager)
 		ctx.Next()
@@ -46,23 +57,42 @@ func getBlockTransactions(c *gin.Context) {
 	}
 }
 
-func handleRequests(mngrs managers) {
+func setupRouter(mngrs *managers) *gin.Engine {
+	gin.SetMode(gin.ReleaseMode)
 	router := gin.Default()
+
 	// possibly should use versioning for api
 	blockGroup := router.Group("/")
 	blockGroup.Use(injectManagerMiddleware(mngrs))
 	{
 		blockGroup.GET("api/block/:block_number/total", getBlockTransactions)
 	}
+	return router
+}
 
-	router.Run("localhost:8080")
+func runMigrations(settingsUrl string) {
+	migrator, err := migrate.New(
+		"file://db/migrations",
+		settingsUrl)
+	if err != nil {
+		log.Println("cannot instantiate migrator", err)
+	}
+	if err := migrator.Up(); err != nil && err != migrate.ErrNoChange {
+		log.Println("cannot run up migration on database ", err)
+	}
 }
 
 func main() {
 	config.LoadEnv()
-	str := store.CreateNewPGStore(pgconfig.DBSettingsAsString())
+	dbSettings := pgconfig.NewDbSettings("")
+	// it's not a good idea to autorun migrate. But it's ok now. Just for easier setup
+	runMigrations(dbSettings.AsUrl())
+	str := store.CreateNewPGStore(dbSettings.AsString())
 	mng := block_manager.CreateNewRepo(str)
-	mngrs := managers{blockManager: mng}
-
-	handleRequests(mngrs)
+	mngrs := &managers{blockManager: mng}
+	router := setupRouter(mngrs)
+	err := router.Run(":8080")
+	if err != nil {
+		log.Fatalln("cannot run the server", err)
+	}
 }

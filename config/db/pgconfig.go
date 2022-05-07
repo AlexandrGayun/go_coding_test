@@ -3,6 +3,7 @@ package pgconfig
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 type dbSettings struct {
@@ -15,36 +16,51 @@ type dbSettings struct {
 	timeZone string
 }
 
-func newDbSettings() *dbSettings {
-	sslMode, ok := os.LookupEnv("DB_SSLMODE")
+func NewDbSettings(envPrefix string) *dbSettings {
+	envPrefix = strings.ToUpper(envPrefix)
+	envName := func(env string) string { return envPrefix + env }
+	sslMode, ok := os.LookupEnv(envName("DB_SSLMODE"))
 	if !ok {
 		sslMode = "disable"
 	}
-	timeZone, ok := os.LookupEnv("DB_TIMEZONE")
+	timeZone, ok := os.LookupEnv(envName("DB_TIMEZONE"))
 	if !ok {
 		timeZone = "Etc/GMT+8"
 	}
 	return &dbSettings{
-		hostName: os.Getenv("DB_HOST"),
-		user:     os.Getenv("DB_USER"),
-		password: os.Getenv("DB_PASSWORD"),
-		dbName:   os.Getenv("DB_NAME"),
-		port:     os.Getenv("DB_PORT"),
+		hostName: os.Getenv(envName("DB_HOST")),
+		user:     os.Getenv(envName("DB_USER")),
+		password: os.Getenv(envName("DB_PASSWORD")),
+		dbName:   os.Getenv(envName("DB_NAME")),
+		port:     os.Getenv(envName("DB_PORT")),
 		sslMode:  sslMode,
 		timeZone: timeZone}
 }
 
-func DBSettingsAsString() string {
-	dbSettings := newDbSettings()
+func (settings *dbSettings) AsString() string {
 	dbSettingsString := fmt.Sprintf(
 		"host=%s user=%s password=%s dbname=%s port=%s sslmode=%s TimeZone=%s",
-		dbSettings.hostName,
-		dbSettings.user,
-		dbSettings.password,
-		dbSettings.dbName,
-		dbSettings.port,
-		dbSettings.sslMode,
-		dbSettings.timeZone,
+		settings.hostName,
+		settings.user,
+		settings.password,
+		settings.dbName,
+		settings.port,
+		settings.sslMode,
+		settings.timeZone,
 	)
 	return dbSettingsString
+}
+
+func (settings *dbSettings) AsUrl() string {
+	dbSettingsUrl := fmt.Sprintf(
+		"postgres://%s:%s@%s:%s/%s?sslmode=%s&timezone=%s",
+		settings.user,
+		settings.password,
+		settings.hostName,
+		settings.port,
+		settings.dbName,
+		settings.sslMode,
+		settings.timeZone,
+	)
+	return dbSettingsUrl
 }

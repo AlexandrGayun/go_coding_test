@@ -5,9 +5,9 @@ import (
 	"log"
 )
 
-func LoadEnv() {
-	err := godotenv.Load()
+func LoadEnv(path ...string) {
+	err := godotenv.Load(path...)
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		log.Fatal("Error loading .env file", err)
 	}
 }
